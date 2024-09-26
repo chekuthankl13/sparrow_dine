@@ -21,3 +21,8 @@ func SuccessResponse(c *gin.Context, msg string, data interface{}) {
 	res := responseHelper{Status: http.StatusOK, Data: data, Message: msg}
 	c.JSON(http.StatusOK, res)
 }
+
+func UnauthorizedResponse(c *gin.Context, msg string) {
+	res := responseHelper{Status: http.StatusUnauthorized, Data: nil, Message: msg}
+	c.AbortWithStatusJSON(http.StatusUnauthorized, res)
+}
