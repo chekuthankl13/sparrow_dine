@@ -36,6 +36,16 @@ type staffUpdate struct {
 	Password    string `form:"password,omitempty" `
 }
 
+type kitchen struct {
+	KitchenName string `form:"kitchen_name" binding:"required"`
+	Password    string `form:"password" binding:"required"`
+}
+
+type table struct {
+	TableName string `form:"table_name" binding:"required"`
+	Status    string `form:"status"`
+}
+
 /////////////
 
 func AdminLogin(c *gin.Context) {
@@ -84,33 +94,37 @@ func AdminLogin(c *gin.Context) {
 
 func AdminRegister(c *gin.Context) {
 	collection := helpers.DB.Collection("admin_cred")
-
+	fmt.Println("*****1*******")
 	var inputCred adminCred
 	if err := c.Bind(&inputCred); err != nil {
 		helpers.BadResponse(c, err.Error())
 		return
 	}
+	fmt.Println("*****2*******")
 
-	count, _ := collection.CountDocuments(context.Background(), bson.M{"user_name": inputCred.Username})
+	count, _ := collection.CountDocuments(context.TODO(), bson.M{"user_name": inputCred.Username})
 	fmt.Println("count -", count)
 	if count >= 1 {
 		helpers.BadResponse(c, "username already exist !!")
 		return
 	}
+	fmt.Println("*****3*******")
 
 	hashPsw, err := middlewares.HashPassword(inputCred.Password)
 	if err != nil {
 		helpers.BadResponse(c, err.Error())
 		return
 	}
+	fmt.Println("*****4*******")
 
 	cred := models.AdminCredModel{UserName: inputCred.Username, Password: hashPsw}
 
-	result, err := collection.InsertOne(context.Background(), &cred)
+	result, err := collection.InsertOne(context.TODO(), &cred)
 	if err != nil {
 		helpers.BadResponse(c, err.Error())
 		return
 	}
+	fmt.Println("*****5*******")
 
 	helpers.SuccessResponse(c, "admin registered successfully", result.InsertedID)
 
@@ -177,6 +191,10 @@ func GetStaffs(c *gin.Context) {
 	}
 
 	defer cur.Close(context.TODO())
+
+	if data == nil {
+		data = []models.StaffModel{}
+	}
 
 	helpers.SuccessResponse(c, "staffs", data)
 
@@ -270,4 +288,158 @@ func EditStaff(c *gin.Context) {
 	}
 	helpers.SuccessResponse(c, "staff updated successfully !", res.UpsertedID)
 
+}
+
+func CreateKitchen(c *gin.Context) {
+	collection := helpers.DB.Collection("kitchen")
+	var input kitchen
+	if err := c.Bind(&input); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	hashPsw, err := middlewares.HashPassword(input.Password)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	kitchen := models.KitchenModel{KitchenName: input.KitchenName, Password: hashPsw}
+
+	res, err := collection.InsertOne(context.TODO(), &kitchen)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	helpers.SuccessResponse(c, "kitchen created successfully", res.InsertedID)
+}
+
+func GetKitchen(c *gin.Context) {
+	collection := helpers.DB.Collection("kitchen")
+
+	var data []models.KitchenModel
+
+	cur, err := collection.Find(context.Background(), bson.M{})
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+	for cur.Next(context.TODO()) {
+		var kitchen models.KitchenModel
+		err := cur.Decode(&kitchen)
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+		data = append(data, kitchen)
+	}
+	defer cur.Close(context.TODO())
+
+	if data == nil {
+		data = []models.KitchenModel{}
+	}
+
+	helpers.SuccessResponse(c, "kitchen list", data)
+}
+
+func DeleteKitchen(c *gin.Context) {
+	collection := helpers.DB.Collection("kitchen")
+	params := c.Param("id")
+
+	id, err := primitive.ObjectIDFromHex(params)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	count, _ := collection.CountDocuments(context.Background(), bson.M{"_id": id})
+	if count == 0 {
+		helpers.BadResponse(c, "kitchen not found")
+		return
+	}
+
+	res, err := collection.DeleteOne(context.Background(), bson.M{"_id": id})
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	helpers.SuccessResponse(c, "kitchen successfully deleted !!", res.DeletedCount)
+}
+
+func CreateTable(c *gin.Context) {
+	collection := helpers.DB.Collection("table")
+	var input table
+	if err := c.Bind(&input); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	input.Status = "available"
+
+	table := models.TableModel{TableName: input.TableName, Status: input.Status}
+
+	res, err := collection.InsertOne(context.TODO(), &table)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+	helpers.SuccessResponse(c, "table created successfully", res.InsertedID)
+
+}
+
+func GetTable(c *gin.Context) {
+	collection := helpers.DB.Collection("table")
+
+	var data []models.TableModel
+
+	cur, err := collection.Find(context.TODO(), bson.M{})
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	for cur.Next(context.TODO()) {
+		var table models.TableModel
+		err := cur.Decode(&table)
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+
+		data = append(data, table)
+	}
+	defer cur.Close(context.TODO())
+
+	if data == nil {
+		data = []models.TableModel{}
+	}
+	helpers.SuccessResponse(c, "table list", data)
+}
+
+func DeleteTable(c *gin.Context) {
+	collection := helpers.DB.Collection("table")
+	params := c.Param("id")
+
+	id, err := primitive.ObjectIDFromHex(params)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	count, _ := collection.CountDocuments(context.Background(), bson.M{"_id": id})
+
+	if count == 0 {
+		helpers.BadResponse(c, "table not found")
+		return
+	}
+
+	res, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	helpers.SuccessResponse(c, "table seleted successfully", res.DeletedCount)
 }

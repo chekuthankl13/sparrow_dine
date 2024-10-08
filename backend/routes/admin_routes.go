@@ -12,4 +12,10 @@ func AdminRoutes(r *gin.Engine) {
 
 	staff := r.Group("/staff", middlewares.ValidateToken())
 	staff.POST("", controllers.StaffCreate).GET("", controllers.GetStaffs).DELETE("/:id", controllers.DeleteStaff).PUT("/:id", controllers.EditStaff)
+
+	kitchen := r.Group("/kitchen", middlewares.ValidateToken())
+	kitchen.POST("", controllers.CreateKitchen).GET("", controllers.GetKitchen).DELETE("/:id", controllers.DeleteKitchen)
+
+	table := r.Group("/table", middlewares.ValidateToken())
+	table.POST("", controllers.CreateTable).GET("", controllers.GetTable).DELETE("/:id", controllers.DeleteTable)
 }
