@@ -18,4 +18,8 @@ func AdminRoutes(r *gin.Engine) {
 
 	table := r.Group("/table", middlewares.ValidateToken())
 	table.POST("", controllers.CreateTable).GET("", controllers.GetTable).DELETE("/:id", controllers.DeleteTable)
+
+	item := r.Group("/item", middlewares.ValidateToken())
+
+	item.POST("", controllers.CreateItem)
 }

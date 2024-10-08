@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
@@ -44,6 +45,13 @@ type kitchen struct {
 type table struct {
 	TableName string `form:"table_name" binding:"required"`
 	Status    string `form:"status"`
+}
+
+type item struct {
+	ItemName string           `form:"item_name" binding:"required"`
+	Price    string           `form:"price" binding:"required"`
+	Qty      string           `form:"qty" binding:"required"`
+	SubQty   []models.SubItem `form:"sub_qty"`
 }
 
 /////////////
@@ -442,4 +450,69 @@ func DeleteTable(c *gin.Context) {
 	}
 
 	helpers.SuccessResponse(c, "table seleted successfully", res.DeletedCount)
+}
+
+func CreateItem(c *gin.Context) {
+	collection := helpers.DB.Collection("item")
+	var input item
+	fmt.Println("*********1********")
+	if err := c.Bind(&input); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+	fmt.Println("*********2********")
+
+	file, err := c.FormFile("image")
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	defer cancel()
+
+	storage, err := helpers.FirebaseApp.Storage(context.Background())
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	bucket, err := storage.Bucket(os.Getenv("BUCKET_NAME"))
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+	defer f.Close()
+
+	obj := bucket.Object(os.Getenv("BUCKET_FOLDER") + "/" + file.Filename)
+
+	writer := obj.NewWriter(ctx)
+
+	if _, err := io.Copy(writer, f); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	if err := writer.Close(); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	imageUrl := fmt.Sprintf("https://storageapis.com/%s/%s/%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), file.Filename)
+
+	var data = models.ItemModel{ImageUrl: imageUrl, Price: input.Price, ItemName: input.ItemName, Qty: input.Qty, SubQty: input.SubQty}
+	res, err := collection.InsertOne(context.Background(), &data)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	helpers.SuccessResponse(c, "item created successfully !!", res.InsertedID)
+
 }

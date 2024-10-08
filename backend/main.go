@@ -11,6 +11,7 @@ import (
 func init() {
 	helpers.LoadEnv()
 	helpers.ConnectMongoDb()
+	helpers.InitFirebase()
 }
 
 func main() {
