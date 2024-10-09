@@ -21,5 +21,5 @@ func AdminRoutes(r *gin.Engine) {
 
 	item := r.Group("/item", middlewares.ValidateToken())
 
-	item.POST("", controllers.CreateItem)
+	item.POST("", controllers.CreateItem).GET("", controllers.GetItems)
 }

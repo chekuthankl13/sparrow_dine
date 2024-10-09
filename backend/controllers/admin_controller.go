@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -48,10 +49,10 @@ type table struct {
 }
 
 type item struct {
-	ItemName string           `form:"item_name" binding:"required"`
-	Price    string           `form:"price" binding:"required"`
-	Qty      string           `form:"qty" binding:"required"`
-	SubQty   []models.SubItem `form:"sub_qty"`
+	ItemName string `form:"item_name" binding:"required"`
+	Price    string `form:"price" binding:"required"`
+	Qty      string `form:"qty" binding:"required"`
+	SubQty   string `form:"sub_qty"`
 }
 
 /////////////
@@ -456,6 +457,7 @@ func CreateItem(c *gin.Context) {
 	collection := helpers.DB.Collection("item")
 	var input item
 	fmt.Println("*********1********")
+
 	if err := c.Bind(&input); err != nil {
 		helpers.BadResponse(c, err.Error())
 		return
@@ -504,9 +506,19 @@ func CreateItem(c *gin.Context) {
 		return
 	}
 
-	imageUrl := fmt.Sprintf("https://storageapis.com/%s/%s/%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), file.Filename)
+	imageUrl := fmt.Sprintf("https://storage.googleapis.com/%s/%s/%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), file.Filename)
 
-	var data = models.ItemModel{ImageUrl: imageUrl, Price: input.Price, ItemName: input.ItemName, Qty: input.Qty, SubQty: input.SubQty}
+	var j []models.SubItem
+
+	if input.SubQty != "" {
+		err = json.Unmarshal([]byte(input.SubQty), &j)
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+	}
+
+	var data = models.ItemModel{ImageUrl: imageUrl, Price: input.Price, ItemName: input.ItemName, Qty: input.Qty, SubQty: j}
 	res, err := collection.InsertOne(context.Background(), &data)
 	if err != nil {
 		helpers.BadResponse(c, err.Error())
@@ -514,5 +526,31 @@ func CreateItem(c *gin.Context) {
 	}
 
 	helpers.SuccessResponse(c, "item created successfully !!", res.InsertedID)
+
+}
+
+func GetItems(c *gin.Context) {
+	collection := helpers.DB.Collection("item")
+
+	var data []models.ItemModel
+
+	cursor, err := collection.Find(context.Background(), bson.M{})
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	for cursor.Next(context.Background()) {
+		var item models.ItemModel
+		err := cursor.Decode(&item)
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+
+		data = append(data, item)
+	}
+
+	helpers.SuccessResponse(c, "item list", data)
 
 }
