@@ -55,6 +55,7 @@ type item struct {
 	Price    string `form:"price" binding:"required"`
 	Qty      string `form:"qty" binding:"required"`
 	SubQty   string `form:"sub_qty"`
+	Addon    string `form:"addons"`
 }
 
 type itemUpdate struct {
@@ -62,6 +63,7 @@ type itemUpdate struct {
 	Price    string `form:"price,omitempty"`
 	Qty      string `form:"qty,omitempty"`
 	SubQty   string `form:"sub_qty,omitempty"`
+	Addons   string `form:addons,omitempty`
 }
 
 /////////////
@@ -537,7 +539,16 @@ func CreateItem(c *gin.Context) {
 		}
 	}
 
-	var data = models.ItemModel{ImageUrl: imageUrl, Price: input.Price, ItemName: input.ItemName, Qty: input.Qty, SubQty: j}
+	var addons []string
+
+	if input.Addon != "" {
+		if err := json.Unmarshal([]byte(input.SubQty), &addons); err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+	}
+
+	var data = models.ItemModel{ImageUrl: imageUrl, Price: input.Price, ItemName: input.ItemName, Qty: input.Qty, SubQty: j, Addons: addons}
 	res, err := collection.InsertOne(context.Background(), &data)
 	if err != nil {
 		helpers.BadResponse(c, err.Error())
@@ -691,6 +702,17 @@ func UpdateItem(c *gin.Context) {
 			return
 		}
 		updateFields = append(updateFields, bson.E{Key: "sub_qty", Value: subQty})
+	}
+
+	if input.Addons != "" {
+
+		var i []string
+		if err := json.Unmarshal([]byte(input.Addons), &i); err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+
+		updateFields = append(updateFields, bson.E{Key: "addons", Value: i})
 	}
 
 	if image != nil {
