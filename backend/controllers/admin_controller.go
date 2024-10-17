@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/chekuthankl13/sparrow_dine/helpers"
@@ -13,6 +14,7 @@ import (
 	"github.com/chekuthankl13/sparrow_dine/models"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -55,6 +57,13 @@ type item struct {
 	SubQty   string `form:"sub_qty"`
 }
 
+type itemUpdate struct {
+	ItemName string `form:"item_name,omitempty"`
+	Price    string `form:"price,omitempty"`
+	Qty      string `form:"qty,omitempty"`
+	SubQty   string `form:"sub_qty,omitempty"`
+}
+
 /////////////
 
 func AdminLogin(c *gin.Context) {
@@ -84,6 +93,14 @@ func AdminLogin(c *gin.Context) {
 	//// jwt generation
 
 	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+
+		/*
+			"data": map[string]string{"userId": "5f48d1a5f29cea66f634f2ec",
+						"userType":  "default",
+						"userTable": "customerTable"},
+					"exp": time.Now().AddDate(1, 0, 0).Unix(),
+					"iat": time.Now().Unix(),
+		*/
 		"id":  result.ID.Hex(),
 		"exp": time.Now().Add(time.Hour * 24).Unix(),
 	})
@@ -495,6 +512,8 @@ func CreateItem(c *gin.Context) {
 	obj := bucket.Object(os.Getenv("BUCKET_FOLDER") + "/" + file.Filename)
 
 	writer := obj.NewWriter(ctx)
+	id := uuid.New().String()
+	writer.ObjectAttrs.Metadata = map[string]string{"firebaseStorageDownloadTokens": id}
 
 	if _, err := io.Copy(writer, f); err != nil {
 		helpers.BadResponse(c, err.Error())
@@ -506,7 +525,7 @@ func CreateItem(c *gin.Context) {
 		return
 	}
 
-	imageUrl := fmt.Sprintf("https://storage.googleapis.com/%s/%s/%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), file.Filename)
+	imageUrl := fmt.Sprintf("https://firebasestorage.googleapis.com/v0/b/%s/o/%s%s%s?alt=media&token=%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), "%2f", file.Filename, id)
 
 	var j []models.SubItem
 
@@ -552,5 +571,183 @@ func GetItems(c *gin.Context) {
 	}
 
 	helpers.SuccessResponse(c, "item list", data)
+
+}
+
+func DeleteItem(c *gin.Context) {
+	collection := helpers.DB.Collection("item")
+	params := c.Param("id")
+	id, err := primitive.ObjectIDFromHex(params)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	count, _ := collection.CountDocuments(context.TODO(), bson.M{"_id": id})
+
+	if count == 0 {
+		helpers.BadResponse(c, "document not found !!")
+		return
+	}
+
+	var res1 models.ItemModel
+
+	if err := collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&res1); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	base := fmt.Sprintf("https://firebasestorage.googleapis.com/v0/b/%s/o/%s%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), "%2f")
+
+	// startUrl := len(base)
+	// endUrl := len(res1.ImageUrl) - len("?alt=media")
+	// fmt.Println(endUrl)
+	url := strings.Split(strings.Join(strings.Split(res1.ImageUrl, base), ""), "?")[0]
+	fmt.Println(url)
+	storage, err := helpers.FirebaseApp.Storage(context.Background())
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	bucket, err := storage.Bucket(os.Getenv("BUCKET_NAME"))
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	obj := bucket.Object("demo/" + url)
+
+	if err := obj.Delete(context.TODO()); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	res2, err := collection.DeleteOne(context.TODO(), bson.M{"_id": id})
+
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	if res2.DeletedCount == 0 {
+		helpers.BadResponse(c, "not deleted !!")
+		return
+	}
+
+	helpers.SuccessResponse(c, "item deleted successfully", res2.DeletedCount)
+
+}
+
+func UpdateItem(c *gin.Context) {
+	collection := helpers.DB.Collection("item")
+	var params string = c.Param("id")
+	id, err := primitive.ObjectIDFromHex(params)
+
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	if count, _ := collection.CountDocuments(context.TODO(), bson.M{"_id": id}); count == 0 {
+		helpers.BadResponse(c, "document not found !!")
+		return
+	}
+	var res1 models.ItemModel
+
+	if err := collection.FindOne(context.TODO(), bson.M{"_id": id}).Decode(&res1); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	var input itemUpdate
+
+	if err := c.Bind(&input); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	image, _ := c.FormFile("image")
+
+	var updateFields bson.D
+
+	if input.ItemName != "" {
+		updateFields = append(updateFields, bson.E{Key: "item_name", Value: input.ItemName})
+	}
+
+	if input.Price != "" {
+		updateFields = append(updateFields, bson.E{Key: "price", Value: input.Price})
+	}
+
+	if input.Qty != "" {
+		updateFields = append(updateFields, bson.E{Key: "qty", Value: input.Qty})
+	}
+
+	if input.SubQty != "" {
+		var subQty []models.SubItem
+		err := json.Unmarshal([]byte(input.SubQty), &subQty)
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+		updateFields = append(updateFields, bson.E{Key: "sub_qty", Value: subQty})
+	}
+
+	if image != nil {
+		base := fmt.Sprintf("https://firebasestorage.googleapis.com/v0/b/%s/o/%s%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), "%2f")
+		imageUrl := strings.Split(strings.Join(strings.Split(res1.ImageUrl, base), ""), "?alt=media")[0]
+
+		storage, err := helpers.FirebaseApp.Storage(context.Background())
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+		bucket, err := storage.Bucket(os.Getenv("BUCKET_NAME"))
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+
+		obj := bucket.Object(os.Getenv("BUCKET_FOLDER") + "/" + imageUrl)
+		if err := obj.Delete(context.TODO()); err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+		obj2 := bucket.Object(os.Getenv("BUCKET_FOLDER") + "/" + image.Filename)
+
+		f, err := image.Open()
+
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+		defer f.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		writer := obj2.NewWriter(ctx)
+		defer writer.Close()
+		id := uuid.New().String()
+
+		writer.ObjectAttrs.Metadata = map[string]string{"firebaseStorageDownloadToken": id}
+		if _, err := io.Copy(writer, f); err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+
+		finalImageUrl := fmt.Sprintf("https://firebasestorage.googleapis.com/v0/b/%s/o/%s%s%s?alt=media&token=%s", os.Getenv("BUCKET_NAME"), os.Getenv("BUCKET_FOLDER"), "%2f", image.Filename, id)
+		updateFields = append(updateFields, bson.E{Key: "image_url", Value: finalImageUrl})
+	}
+
+	update := bson.D{{Key: "$set", Value: updateFields}}
+	filter := bson.D{{Key: "_id", Value: id}}
+
+	res, err := collection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	helpers.SuccessResponse(c, "item updated successfully !", res.ModifiedCount)
 
 }

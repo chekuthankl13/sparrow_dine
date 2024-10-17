@@ -8,7 +8,7 @@ type ItemModel struct {
 	ItemName string             `bson:"item_name" json:"item_name"`
 	Price    string             `bson:"price" json:"price"`
 	Qty      string             `bson:"qty" json:"qty"`
-	SubQty   []SubItem          `bson:"sub_qty,omitempty" json:"sub_qty,omitempty"`
+	SubQty   []SubItem          `bson:"sub_qty" json:"sub_qty"`
 }
 
 type SubItem struct {
