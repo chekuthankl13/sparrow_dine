@@ -63,7 +63,7 @@ type itemUpdate struct {
 	Price    string `form:"price,omitempty"`
 	Qty      string `form:"qty,omitempty"`
 	SubQty   string `form:"sub_qty,omitempty"`
-	Addons   string `form:addons,omitempty`
+	Addons   string `form:"addons,omitempty"`
 }
 
 /////////////
