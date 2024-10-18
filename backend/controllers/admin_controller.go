@@ -66,6 +66,23 @@ type itemUpdate struct {
 	Addons   string `form:"addons,omitempty"`
 }
 
+type Bill struct {
+	CustomerNumber    string `form:"customer_number" binding:"required"`
+	CustomerName      string `form:"customer_name" binding:"required"`
+	Date              string `form:"date" binding:"required"`
+	BilledTime        string `form:"billed_time" binding:"required"`
+	PaidTime          string `form:"paid_time"`
+	PaymentStatus     bool   `form:"payment_status"`
+	PaymentType       string `form:"payment_type"`
+	Discount          string `form:"discount"`
+	TotalItemAmount   string `form:"total_item_amount" binding:"required"`
+	TotalParcelAmount string `form:"total_parcel_amount"`
+	NetTotal          string `form:"net_total" binding:"required"`
+	Type              string `form:"type" binding:"required"`
+	Items             string `form:"items"`
+	Parcels           string `form:"parcels"`
+}
+
 /////////////
 
 func AdminLogin(c *gin.Context) {
@@ -771,5 +788,108 @@ func UpdateItem(c *gin.Context) {
 	}
 
 	helpers.SuccessResponse(c, "item updated successfully !", res.ModifiedCount)
+
+}
+
+func AddBill(c *gin.Context) {
+	collection := helpers.DB.Collection("bill")
+	var input Bill
+	if err := c.Bind(&input); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	var items []models.BillItemModel
+
+	if input.Items != "" {
+		if err := json.Unmarshal([]byte(input.Items), &items); err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+	}
+
+	var parcel []models.BillItemModel
+
+	if input.Parcels != "" {
+		if err := json.Unmarshal([]byte(input.Parcels), &parcel); err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+	}
+
+	bill := models.BillModel{CustomerNumber: input.CustomerNumber, CustomerName: input.CustomerName, Date: input.Date, BilledTime: input.BilledTime, PaidTime: input.PaidTime, PaymentStatus: input.PaymentStatus, PaymentType: input.PaymentType, Discount: input.Discount, TotalItemAmount: input.TotalItemAmount, TotalParcelAmount: input.TotalParcelAmount, NetTotal: input.NetTotal, Type: input.Type, Items: items, Parcels: parcel}
+
+	res, err := collection.InsertOne(context.TODO(), &bill)
+	if err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	helpers.SuccessResponse(c, "bill generated successfully !", res.InsertedID)
+
+}
+
+func GetBill(c *gin.Context) {
+	collection := helpers.DB.Collection("bill")
+	type Format struct {
+		From string `form:"from"`
+		To   string `form:"to"`
+	}
+
+	var input Format
+
+	if err := c.Bind(&input); err != nil {
+		helpers.BadResponse(c, err.Error())
+		return
+	}
+
+	if input.From != "" && input.To != "" {
+		filter := bson.M{
+			"date": bson.M{
+				"$gte": input.From,
+				"$lte": input.To,
+			},
+		}
+
+		cursour, err := collection.Find(context.TODO(), filter)
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+		var bills []models.BillModel
+		for cursour.Next(context.TODO()) {
+			var bill models.BillModel
+			if err := cursour.Decode(&bill); err != nil {
+				helpers.BadResponse(c, err.Error())
+				return
+			}
+			bills = append(bills, bill)
+		}
+		defer cursour.Close(context.TODO())
+
+		helpers.SuccessResponse(c, "bill from "+input.From+" to "+input.To, bills)
+		return
+
+	} else {
+		var bills []models.BillModel
+
+		cursor, err := collection.Find(context.Background(), bson.M{})
+		if err != nil {
+			helpers.BadResponse(c, err.Error())
+			return
+		}
+
+		for cursor.Next(context.TODO()) {
+			var bill models.BillModel
+			if err := cursor.Decode(&bill); err != nil {
+				helpers.BadResponse(c, err.Error())
+				return
+			}
+			bills = append(bills, bill)
+		}
+		defer cursor.Close(context.TODO())
+
+		helpers.SuccessResponse(c, "bills list", bills)
+	}
 
 }
